@@ -1,0 +1,67 @@
+# Docker-Compose para 
+#version: '3.8'
+services:
+  ### Servicio Ollama (Modelo de lenguaje)
+  ollama:
+    image: ollama/ollama:latest   # Imagen oficial de Ollama desde Docker Hub 
+    ports:
+      - "11435:11434"  # # Expone el puerto 11435 en el host y el 11434 en el contenedor
+    volumes:
+      - ollama_data:/root/.ollama  # Persiste los modelos descargados entre reinicios
+    command: ["serve"]  # Comando de inicio sin usar shell (más seguro y limpio)
+    environment:
+      - OLLAMA_HOST=0.0.0.0  # Permite conexiones externas
+      - NVIDIA_VISIBLE_DEVICES=all  # Da acceso a todas las GPUs disponibles en el Servidor
+    runtime: nvidia  # # Habilita el runtime de NVIDIA (para usar GPU)
+    deploy:  # Nuevo (asignación explícita de recursos GPU)
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1  # Asigna 1 GPU, podriamos agregar mas si es necesario
+              capabilities: [gpu]
+    restart: unless-stopped  # Reinicia el contenedor si se detiene inesperadamente 
+
+
+  ### Servicio Backend
+  backend:
+    build:  
+      context: . # # Usa el directorio actual para la construcción de la imagen
+      dockerfile: Dockerfile.backend  # Especifica el nombre exacto del Dockerfile específico del backend
+    ports:
+      - "8000:8000"  # Expone el backend
+    environment:
+      - OLLAMA_HOST=http://ollama:11434  # Usa el puerto INTERNO del contenedor (11434), no el del host (11435).
+    depends_on:
+      - ollama   # Se asegura de que el servicio `ollama` esté ejecutandose primero
+    restart: unless-stopped  # Reinicio automático en caso de falla 
+
+  ### Servicio Frontend
+  #frontend:
+  #  build: 
+  #    context: ./llm-chatbot-frontend-bryan  # Ruta al Dockerfile del frontend
+  #    dockerfile: Dockerfile.frontend  # Especifica el nombre exacto del imagen-frontend
+  #  ports:
+  #    - "3000:3000"    # Expone el frontend en el navegador
+  #  volumes: # Se agrego para permisos de node
+  #    - /app/node_modules
+  #  environment: # Se agrego para permisos de node
+  #    - NODE_ENV=production
+  #    - CHOKIDAR_USEPOLLING=true
+  #  depends_on:
+  #    - backend  # Asegura que el backend esté disponible antes 
+  #  restart: unless-stopped  # Reinicio automático en caso de falla 
+
+    ### Servicio frontend Gradio
+  gradio:
+    build:
+      context: ./frontend_gradio  # Ruta al Dockerfile del frontend.gradio
+      dockerfile: Dockerfile.gradio  # Especifica el nombre exacto del imagen-frontend
+    ports:
+      - "7860:7860"
+    depends_on:
+      - backend
+
+
+volumes:
+  ollama_data:  # Almacena los modelos descargados por Ollama de forma persistente
